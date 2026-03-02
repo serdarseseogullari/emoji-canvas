@@ -9,13 +9,29 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { colorCategories, getRandomEmoji } from "@/lib/emoji-utils"
 
+// Size buckets in px for the ImageBitmap cache (rendered at 1x, scaled via drawImage)
+// These correspond roughly to 1.0 / 1.5 / 2.0 / 2.5 / 3.0 em at ~16px base
+const EMOJI_SIZE_BUCKETS = [24, 36, 48, 60, 72]
+
+// Pick the nearest bucket for a given em size
+function bucketSize(em: number): number {
+  const px = em * 16
+  let best = EMOJI_SIZE_BUCKETS[0]
+  let bestDiff = Math.abs(px - best)
+  for (const b of EMOJI_SIZE_BUCKETS) {
+    const d = Math.abs(px - b)
+    if (d < bestDiff) { bestDiff = d; best = b }
+  }
+  return best
+}
+
 // Define emoji type
 interface EmojiItem {
   id: number
   emoji: string
   x: number
   y: number
-  size: number
+  sizePx: number  // bucketed pixel size — used as drawImage dimension & cache key
 }
 
 // Rain particle types for tears in rain effect
@@ -52,6 +68,8 @@ export default function EmojiCanvas() {
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const rainCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const rainParticlesRef = useRef<RainParticle[]>([])
+  // ImageBitmap cache: key = "emoji:sizePx"
+  const bitmapCacheRef = useRef<Map<string, ImageBitmap>>(new Map())
 
   const dprRef = useRef(1)
   const gridCellSize = 100
@@ -216,7 +234,32 @@ export default function EmojiCanvas() {
     visibleCellsRef.current = visibleCells
   }
 
-  // Optimized render - batch font changes, with fade support for dark mode
+  // Get or create an ImageBitmap for an emoji at a given pixel size.
+  // Rendering is synchronous via OffscreenCanvas + createImageBitmap (async, fires and caches).
+  // Returns null on first call for a new combo (async creation in flight); returns cached bitmap thereafter.
+  const getOrCreateBitmap = useCallback((emoji: string, sizePx: number): ImageBitmap | null => {
+    const key = `${emoji}:${sizePx}`
+    const cache = bitmapCacheRef.current
+    if (cache.has(key)) return cache.get(key)!
+
+    // Not cached yet — kick off async creation and return null this frame
+    // (will be drawn from cache on the next dirty render)
+    const pad = Math.ceil(sizePx * 0.2)
+    const dim = sizePx + pad * 2
+    const oc = new OffscreenCanvas(dim, dim)
+    const octx = oc.getContext("2d")!
+    octx.font = `${sizePx}px serif`
+    octx.textBaseline = "middle"
+    octx.textAlign = "center"
+    octx.fillText(emoji, dim / 2, dim / 2)
+    createImageBitmap(oc).then(bmp => {
+      cache.set(key, bmp)
+      needsRenderRef.current = true   // trigger a redraw once bitmap is ready
+    })
+    return null
+  }, [])
+
+  // Render all emojis using cached ImageBitmaps — drawImage is a GPU blit, no font system involvement
   const renderCanvas = useCallback(() => {
     const ctx = ctxRef.current
     const canvas = canvasRef.current
@@ -227,27 +270,20 @@ export default function EmojiCanvas() {
 
     const emojis = emojisRef.current
 
-    // Group emojis by size for batch font setting (minimises expensive ctx.font changes)
-    const sizeGroups = new Map<number, number[]>()
-
     for (const cellKey of visibleCellsRef.current) {
       const emojiIndices = spatialGridRef.current.get(cellKey) || []
       for (const index of emojiIndices) {
-        if (!emojis[index]) continue
-        const sizeKey = Math.round(emojis[index].size * 10)
-        if (!sizeGroups.has(sizeKey)) sizeGroups.set(sizeKey, [])
-        sizeGroups.get(sizeKey)!.push(index)
-      }
-    }
-
-    for (const [sizeKey, indices] of sizeGroups) {
-      ctx.font = `${sizeKey / 10}em serif`
-      for (const index of indices) {
         const emoji = emojis[index]
-        ctx.fillText(emoji.emoji, emoji.x, emoji.y)
+        if (!emoji) continue
+        const bitmap = getOrCreateBitmap(emoji.emoji, emoji.sizePx)
+        if (!bitmap) continue  // being created async, will re-render when ready
+        const pad = Math.ceil(emoji.sizePx * 0.2)
+        const dim = emoji.sizePx + pad * 2
+        // Centre the bitmap on the emoji's x,y position
+        ctx.drawImage(bitmap, Math.round(emoji.x - dim / 2), Math.round(emoji.y - dim / 2))
       }
     }
-  }, [theme])
+  }, [getOrCreateBitmap])
 
   // Animation loop - only redraws when dirty (both light and dark mode)
   useEffect(() => {
@@ -307,8 +343,10 @@ export default function EmojiCanvas() {
 
     lastPosition.current = { x, y }
 
-    const size = Math.random() * 2 + 1
-    const newEmoji: EmojiItem = { id: nextId.current, emoji: currentEmoji, x, y, size }
+    const sizePx = bucketSize(Math.random() * 2 + 1)
+    const newEmoji: EmojiItem = { id: nextId.current, emoji: currentEmoji, x, y, sizePx }
+    // Pre-warm the bitmap cache so it's ready before the next render
+    getOrCreateBitmap(currentEmoji, sizePx)
 
     // Direct mutation for performance - no re-render needed
     emojisRef.current.push(newEmoji)
@@ -318,7 +356,7 @@ export default function EmojiCanvas() {
 
     // Update count for UI display (debounced via batching)
     setEmojiCount(emojisRef.current.length)
-  }, [currentEmoji, addToSpatialGrid])
+  }, [currentEmoji, addToSpatialGrid, getOrCreateBitmap])
 
   const clearCanvas = useCallback(() => {
     emojisRef.current = []
