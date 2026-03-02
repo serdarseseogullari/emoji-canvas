@@ -431,7 +431,7 @@ export default function EmojiCanvas() {
   }
 
   return (
-    <div className="relative h-screen w-full overflow-hidden" style={{ backgroundColor: "#1e0021" }}>
+    <div className="relative h-screen w-full overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Title */}
       <svg
         className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 select-none pointer-events-none overflow-visible transition-all duration-500"
@@ -450,22 +450,22 @@ export default function EmojiCanvas() {
                 textAnchor="middle"
                 fontFamily="Damion, cursive"
                 fontSize="90"
-                fill="rgba(0,0,0,0.5)"
+                fill="black"
               >
                 Emoji Canvas
               </text>
             ))}
           </>
         )}
-        {/* Main text — ghost in dark mode, full white+stroke otherwise */}
+        {/* Main text — in dark mode: ghost style; in light mode: white with black stroke */}
         <text
           x="300"
           y="90"
           textAnchor="middle"
           fontFamily="Damion, cursive"
           fontSize="90"
-          fill={theme === "dark" ? "rgba(255,255,255,0.06)" : "white"}
-          stroke={theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.6)"}
+          fill={theme === "dark" ? "rgba(100,100,120,0.15)" : "white"}
+          stroke={theme === "dark" ? "rgba(100,100,120,0.25)" : "black"}
           strokeWidth={theme === "dark" ? "1" : "5"}
           strokeLinejoin="round"
           style={{ paintOrder: "stroke fill" }}
@@ -535,15 +535,11 @@ export default function EmojiCanvas() {
       <EmojiCursor emoji={currentEmoji} />
 
       {/* Floating control bar */}
-      <div
-        className="fixed bottom-4 left-1/2 transform -translate-x-1/2 shadow-lg p-2 flex items-center gap-2 z-10"
-        style={{ backgroundColor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "30px", backdropFilter: "blur(12px)" }}
-      >
+      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white dark:bg-gray-800 rounded-full shadow-lg p-2 flex items-center gap-2 z-10">
         <Button
           variant="ghost"
           size="icon"
-          className={cn("text-white hover:bg-white/10 transition-colors", isShuffleMode ? "bg-white/20" : "")}
-          style={{ borderRadius: "30px" }}
+          className={cn("rounded-full", isShuffleMode ? "bg-primary/20 text-primary" : "text-muted-foreground")}
           onClick={toggleShuffleMode}
           aria-label={isShuffleMode ? "Disable shuffle mode" : "Enable shuffle mode"}
         >
@@ -556,8 +552,8 @@ export default function EmojiCanvas() {
               <button
                 key={color}
                 className={cn(
-                  "w-7 h-7 rounded-full transition-transform",
-                  selectedColor === color ? "scale-110 ring-2 ring-white ring-offset-1 ring-offset-transparent" : "",
+                  "w-8 h-8 rounded-full transition-transform",
+                  selectedColor === color ? "scale-110 ring-2 ring-primary ring-offset-2" : "",
                 )}
                 style={{ backgroundColor: getColorHex(color) }}
                 onClick={() => handleColorSelect(color)}
@@ -567,13 +563,12 @@ export default function EmojiCanvas() {
           </div>
         )}
 
-        <div className="w-px h-6 mx-1" style={{ backgroundColor: "rgba(255,255,255,0.2)" }} />
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
 
         <Button
           variant="ghost"
           size="icon"
-          className="text-white/60 hover:text-red-400 hover:bg-white/10 transition-colors"
-          style={{ borderRadius: "30px" }}
+          className="rounded-full text-muted-foreground hover:text-destructive"
           onClick={clearCanvas}
           aria-label="Clear canvas"
         >
@@ -584,28 +579,24 @@ export default function EmojiCanvas() {
       {/* Dark mode toggle - top right corner */}
       {mounted && (
         <Button
-          variant="ghost"
+          variant="outline"
           size="icon"
-          className="fixed top-4 right-4 z-10 text-white hover:bg-white/10 transition-all duration-300 hover:scale-110 cursor-pointer"
-          style={{ backgroundColor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "30px", backdropFilter: "blur(12px)" }}
+          className="fixed top-4 right-4 z-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:scale-110 hover:shadow-xl dark:hover:shadow-[0_0_20px_rgba(250,204,21,0.4)] hover:shadow-gray-400/50"
           onClick={toggleTheme}
           aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         >
           {theme === "dark" ? (
-            <Sun className="h-5 w-5 text-yellow-400" />
+            <Sun className="h-5 w-5 text-yellow-500" />
           ) : (
-            <Moon className="h-5 w-5 text-white" />
+            <Moon className="h-5 w-5 text-gray-700" />
           )}
         </Button>
       )}
 
       {/* Emoji count display */}
       {emojiCount > 0 && (
-        <div
-          className="fixed top-4 left-4 z-10 px-3 py-1 text-sm font-medium text-white/70"
-          style={{ backgroundColor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "30px", backdropFilter: "blur(12px)" }}
-        >
-          {emojiCount.toLocaleString()} emojis
+        <div className="fixed top-4 left-4 z-10 bg-white dark:bg-gray-800 rounded-full shadow-lg px-3 py-1 text-sm font-medium text-gray-600 dark:text-gray-300">
+          {emojiCount.toLocaleString()} {theme === "dark" ? "tears in rain" : "emojis"}
         </div>
       )}
     </div>
