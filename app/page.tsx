@@ -16,7 +16,6 @@ interface EmojiItem {
   x: number
   y: number
   size: number
-  createdAt: number // timestamp for fade effect
 }
 
 // Rain particle types for tears in rain effect
@@ -63,7 +62,6 @@ export default function EmojiCanvas() {
   const throughParticlesRef = useRef<ThroughParticle[]>([])
   const dprRef = useRef(1)
   const gridCellSize = 100
-  const EMOJI_FADE_DURATION = 15000 // 15 seconds fade in dark mode
   const RAIN_PARTICLE_COUNT = 80
   const THROUGH_PARTICLE_COUNT = 30
 
@@ -175,21 +173,15 @@ export default function EmojiCanvas() {
 
     ctx.clearRect(0, 0, width, height)
 
-    // Layer 1: through-particles — tall gradient streaks (atmospheric light shafts)
+    // Layer 1: through-particles — tall vertical streaks, flat colour (no gradient per frame)
+    ctx.lineWidth = 1
+    ctx.lineCap = "butt"
     for (const p of throughParticlesRef.current) {
-      ctx.save()
+      ctx.strokeStyle = `rgba(200,220,255,${p.opacity})`
       ctx.beginPath()
-      ctx.lineCap = "round"
-      const grd = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.length)
-      grd.addColorStop(0, "rgba(255,255,255,0)")
-      grd.addColorStop(1, `rgba(255,255,255,${p.opacity})`)
-      ctx.strokeStyle = grd
-      ctx.lineWidth = 1
       ctx.moveTo(p.x, p.y)
       ctx.lineTo(p.x, p.y + p.length)
       ctx.stroke()
-      ctx.closePath()
-      ctx.restore()
 
       p.y += p.vy
       if (p.y > height) {
@@ -199,11 +191,10 @@ export default function EmojiCanvas() {
     }
 
     // Layer 2: fine rain streaks with slight angle
-    ctx.lineCap = "round"
+    ctx.lineWidth = 0.8
     for (const p of rainParticlesRef.current) {
-      ctx.beginPath()
       ctx.strokeStyle = p.color
-      ctx.lineWidth = 0.8
+      ctx.beginPath()
       ctx.moveTo(p.x, p.y)
       ctx.lineTo(p.x + p.length * p.vx * 6, p.y + p.length * p.vy * 6)
       ctx.stroke()
@@ -273,82 +264,42 @@ export default function EmojiCanvas() {
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
 
     const emojis = emojisRef.current
-    const isDarkMode = theme === "dark"
-    const now = Date.now()
 
-    // Group emojis by size for batch font setting
-    const sizeGroups = new Map<number, { index: number; opacity: number }[]>()
+    // Group emojis by size for batch font setting (minimises expensive ctx.font changes)
+    const sizeGroups = new Map<number, number[]>()
 
     for (const cellKey of visibleCellsRef.current) {
       const emojiIndices = spatialGridRef.current.get(cellKey) || []
       for (const index of emojiIndices) {
-        const emoji = emojis[index]
-        if (!emoji) continue
-
-        // Calculate opacity for dark mode fading
-        let opacity = 1
-        if (isDarkMode) {
-          const age = now - emoji.createdAt
-          if (age > EMOJI_FADE_DURATION) {
-            opacity = Math.max(0, 1 - (age - EMOJI_FADE_DURATION) / 2000) // 2 second fade out
-          }
-          if (opacity <= 0) continue // Skip fully faded emojis
-        }
-
-        const sizeKey = Math.round(emoji.size * 10)
-        if (!sizeGroups.has(sizeKey)) {
-          sizeGroups.set(sizeKey, [])
-        }
-        sizeGroups.get(sizeKey)!.push({ index, opacity })
+        if (!emojis[index]) continue
+        const sizeKey = Math.round(emojis[index].size * 10)
+        if (!sizeGroups.has(sizeKey)) sizeGroups.set(sizeKey, [])
+        sizeGroups.get(sizeKey)!.push(index)
       }
     }
 
-    // Render by size group to minimize font changes
-    for (const [sizeKey, items] of sizeGroups) {
+    for (const [sizeKey, indices] of sizeGroups) {
       ctx.font = `${sizeKey / 10}em serif`
-      for (const { index, opacity } of items) {
+      for (const index of indices) {
         const emoji = emojis[index]
-        ctx.globalAlpha = opacity
         ctx.fillText(emoji.emoji, emoji.x, emoji.y)
       }
     }
-
-    ctx.globalAlpha = 1 // Reset
   }, [theme])
 
-  // Animation loop - handles emoji rendering and fading only
+  // Animation loop - only redraws when dirty (both light and dark mode)
   useEffect(() => {
-    const isDarkMode = theme === "dark"
-
     const animate = () => {
-      const now = Date.now()
-
-      if (isDarkMode) {
-        const emojis = emojisRef.current
-        let hasExpired = false
-        for (let i = emojis.length - 1; i >= 0; i--) {
-          if (now - emojis[i].createdAt > EMOJI_FADE_DURATION + 2000) {
-            hasExpired = true
-          }
-        }
-        if (hasExpired) {
-          const newEmojis = emojis.filter(e => now - e.createdAt <= EMOJI_FADE_DURATION + 2000)
-          emojisRef.current = newEmojis
-          rebuildSpatialGrid()
-          setEmojiCount(newEmojis.length)
-        }
-        renderCanvas()
-      } else if (needsRenderRef.current) {
+      if (needsRenderRef.current) {
         renderCanvas()
         needsRenderRef.current = false
       }
-
       rafRef.current = requestAnimationFrame(animate)
     }
 
     rafRef.current = requestAnimationFrame(animate)
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
-  }, [theme, renderCanvas, rebuildSpatialGrid])
+  }, [renderCanvas])
 
   // Rain loop - independent of emoji count so speed never degrades
   useEffect(() => {
@@ -395,7 +346,7 @@ export default function EmojiCanvas() {
     lastPosition.current = { x, y }
 
     const size = Math.random() * 2 + 1
-    const newEmoji: EmojiItem = { id: nextId.current, emoji: currentEmoji, x, y, size, createdAt: Date.now() }
+    const newEmoji: EmojiItem = { id: nextId.current, emoji: currentEmoji, x, y, size }
 
     // Direct mutation for performance - no re-render needed
     emojisRef.current.push(newEmoji)
