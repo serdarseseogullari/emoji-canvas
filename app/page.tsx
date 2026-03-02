@@ -28,13 +28,6 @@ interface RainParticle {
   color: string
 }
 
-interface ThroughParticle {
-  x: number
-  y: number
-  vy: number
-  length: number
-  opacity: number
-}
 
 export default function EmojiCanvas() {
   const [currentEmoji, setCurrentEmoji] = useState<string>("😀")
@@ -59,11 +52,10 @@ export default function EmojiCanvas() {
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const rainCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const rainParticlesRef = useRef<RainParticle[]>([])
-  const throughParticlesRef = useRef<ThroughParticle[]>([])
+
   const dprRef = useRef(1)
   const gridCellSize = 100
   const RAIN_PARTICLE_COUNT = 80
-  const THROUGH_PARTICLE_COUNT = 30
 
   // Handle hydration
   useEffect(() => {
@@ -85,20 +77,7 @@ export default function EmojiCanvas() {
       })
     }
     rainParticlesRef.current = particles
-
-    const through: ThroughParticle[] = []
-    for (let i = 0; i < THROUGH_PARTICLE_COUNT; i++) {
-      const length = Math.random() * 400 + 60
-      through.push({
-        x: Math.random() * width,
-        y: Math.random() * height,         // stagger too
-        vy: Math.random() * 2 + 1,         // very slow: 1–3 px/frame
-        length,
-        opacity: Math.random() * 0.07 + 0.02, // subtle: 0.02–0.09
-      })
-    }
-    throughParticlesRef.current = through
-  }, [RAIN_PARTICLE_COUNT, THROUGH_PARTICLE_COUNT])
+  }, [RAIN_PARTICLE_COUNT])
 
   // Initialize canvas
   useEffect(() => {
@@ -173,24 +152,7 @@ export default function EmojiCanvas() {
 
     ctx.clearRect(0, 0, width, height)
 
-    // Layer 1: through-particles — tall vertical streaks, flat colour (no gradient per frame)
-    ctx.lineWidth = 1
-    ctx.lineCap = "butt"
-    for (const p of throughParticlesRef.current) {
-      ctx.strokeStyle = `rgba(200,220,255,${p.opacity})`
-      ctx.beginPath()
-      ctx.moveTo(p.x, p.y)
-      ctx.lineTo(p.x, p.y + p.length)
-      ctx.stroke()
-
-      p.y += p.vy
-      if (p.y > height) {
-        p.y = -p.length
-        p.x = Math.random() * width
-      }
-    }
-
-    // Layer 2: fine rain streaks with slight angle
+    // Fine rain streaks with slight angle
     ctx.lineWidth = 0.8
     for (const p of rainParticlesRef.current) {
       ctx.strokeStyle = p.color
