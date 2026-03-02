@@ -53,6 +53,7 @@ export default function EmojiCanvas() {
   const nextId = useRef(0)
   const lastPosition = useRef<{ x: number; y: number } | null>(null)
   const rafRef = useRef<number | null>(null)
+  const rainRafRef = useRef<number | null>(null)
   const needsRenderRef = useRef(true)
   const visibleCellsRef = useRef<Set<string>>(new Set())
   const spatialGridRef = useRef<Map<string, number[]>>(new Map())
@@ -216,54 +217,6 @@ export default function EmojiCanvas() {
     }
   }, [])
 
-  // Animation loop - handles rendering and rain
-  useEffect(() => {
-    const isDarkMode = theme === "dark"
-
-    const animate = () => {
-      const now = Date.now()
-
-      // In dark mode, continuously render for rain and fading
-      if (isDarkMode) {
-        // Check for expired emojis and trigger re-render
-        const emojis = emojisRef.current
-        let hasExpired = false
-
-        for (let i = emojis.length - 1; i >= 0; i--) {
-          const age = now - emojis[i].createdAt
-          if (age > EMOJI_FADE_DURATION + 2000) {
-            // Remove fully faded emojis
-            hasExpired = true
-          }
-        }
-
-        if (hasExpired) {
-          // Rebuild spatial grid after removing old emojis
-          const newEmojis = emojis.filter(e => now - e.createdAt <= EMOJI_FADE_DURATION + 2000)
-          emojisRef.current = newEmojis
-          rebuildSpatialGrid()
-          setEmojiCount(newEmojis.length)
-        }
-
-        renderCanvas()
-        renderRain()
-      } else if (needsRenderRef.current) {
-        renderCanvas()
-        needsRenderRef.current = false
-      }
-
-      rafRef.current = requestAnimationFrame(animate)
-    }
-
-    rafRef.current = requestAnimationFrame(animate)
-
-    return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current)
-      }
-    }
-  }, [theme, renderRain])
-
   // Add emoji to spatial grid (incremental update)
   const addToSpatialGrid = useCallback((emoji: EmojiItem, index: number) => {
     const cellX = Math.floor(emoji.x / gridCellSize)
@@ -362,6 +315,56 @@ export default function EmojiCanvas() {
 
     ctx.globalAlpha = 1 // Reset
   }, [theme])
+
+  // Animation loop - handles emoji rendering and fading only
+  useEffect(() => {
+    const isDarkMode = theme === "dark"
+
+    const animate = () => {
+      const now = Date.now()
+
+      if (isDarkMode) {
+        const emojis = emojisRef.current
+        let hasExpired = false
+        for (let i = emojis.length - 1; i >= 0; i--) {
+          if (now - emojis[i].createdAt > EMOJI_FADE_DURATION + 2000) {
+            hasExpired = true
+          }
+        }
+        if (hasExpired) {
+          const newEmojis = emojis.filter(e => now - e.createdAt <= EMOJI_FADE_DURATION + 2000)
+          emojisRef.current = newEmojis
+          rebuildSpatialGrid()
+          setEmojiCount(newEmojis.length)
+        }
+        renderCanvas()
+      } else if (needsRenderRef.current) {
+        renderCanvas()
+        needsRenderRef.current = false
+      }
+
+      rafRef.current = requestAnimationFrame(animate)
+    }
+
+    rafRef.current = requestAnimationFrame(animate)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [theme, renderCanvas, rebuildSpatialGrid])
+
+  // Rain loop - independent of emoji count so speed never degrades
+  useEffect(() => {
+    if (theme !== "dark") {
+      if (rainRafRef.current) cancelAnimationFrame(rainRafRef.current)
+      return
+    }
+
+    const animateRain = () => {
+      renderRain()
+      rainRafRef.current = requestAnimationFrame(animateRain)
+    }
+
+    rainRafRef.current = requestAnimationFrame(animateRain)
+    return () => { if (rainRafRef.current) cancelAnimationFrame(rainRafRef.current) }
+  }, [theme, renderRain])
 
   // Prevent scrolling on mobile when interacting with canvas
   useEffect(() => {
@@ -478,44 +481,47 @@ export default function EmojiCanvas() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gray-50 dark:bg-gray-900">
-      {/* Title — only visible in light mode */}
-      {theme !== "dark" && (
-        <svg
-          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 select-none pointer-events-none overflow-visible"
-          viewBox="0 0 600 120"
-          xmlns="http://www.w3.org/2000/svg"
+      {/* Title */}
+      <svg
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 select-none pointer-events-none overflow-visible transition-all duration-500"
+        style={{ width: "min(90vw, 640px)", height: "auto" }}
+        viewBox="0 0 600 120"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {theme !== "dark" && (
+          <>
+            {/* Depth shadow layers rendered first (back) */}
+            {[6,5,4,3,2].map(i => (
+              <text
+                key={i}
+                x={300 + i}
+                y={90 + i}
+                textAnchor="middle"
+                fontFamily="Damion, cursive"
+                fontSize="90"
+                fill="black"
+              >
+                Emoji Canvas
+              </text>
+            ))}
+          </>
+        )}
+        {/* Main text — in dark mode: ghost style; in light mode: white with black stroke */}
+        <text
+          x="300"
+          y="90"
+          textAnchor="middle"
+          fontFamily="Damion, cursive"
+          fontSize="90"
+          fill={theme === "dark" ? "rgba(100,100,120,0.15)" : "white"}
+          stroke={theme === "dark" ? "rgba(100,100,120,0.25)" : "black"}
+          strokeWidth={theme === "dark" ? "1" : "5"}
+          strokeLinejoin="round"
+          style={{ paintOrder: "stroke fill" }}
         >
-          {/* Depth shadow layers rendered first (back) */}
-          {[6,5,4,3,2].map(i => (
-            <text
-              key={i}
-              x={300 + i}
-              y={90 + i}
-              textAnchor="middle"
-              fontFamily="Damion, cursive"
-              fontSize="90"
-              fill="black"
-            >
-              Emoji Canvas
-            </text>
-          ))}
-          {/* Main text on top — paint-order ensures stroke renders behind fill so letters don't bleed */}
-          <text
-            x="300"
-            y="90"
-            textAnchor="middle"
-            fontFamily="Damion, cursive"
-            fontSize="90"
-            fill="white"
-            stroke="black"
-            strokeWidth="5"
-            strokeLinejoin="round"
-            style={{ paintOrder: "stroke fill" }}
-          >
-            Emoji Canvas
-          </text>
-        </svg>
-      )}
+          Emoji Canvas
+        </text>
+      </svg>
 
       {/* Custom cursor - only show on non-touch devices */}
       <style jsx global>{`
