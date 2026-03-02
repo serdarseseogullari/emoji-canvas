@@ -53,7 +53,6 @@ export default function EmojiCanvas() {
   const lastPosition = useRef<{ x: number; y: number } | null>(null)
   const rafRef = useRef<number | null>(null)
   const rainRafRef = useRef<number | null>(null)
-  const countUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const needsRenderRef = useRef(true)
   const visibleCellsRef = useRef<Set<string>>(new Set())
   const spatialGridRef = useRef<Map<string, number[]>>(new Map())
@@ -355,13 +354,8 @@ export default function EmojiCanvas() {
     nextId.current += 1
     needsRenderRef.current = true
 
-    // Throttle count update — React re-renders on every call, which blocks the main thread
-    if (!countUpdateTimerRef.current) {
-      countUpdateTimerRef.current = setTimeout(() => {
-        setEmojiCount(emojisRef.current.length)
-        countUpdateTimerRef.current = null
-      }, 100)
-    }
+    // Update count for UI display (debounced via batching)
+    setEmojiCount(emojisRef.current.length)
   }, [currentEmoji, addToSpatialGrid])
 
   const clearCanvas = useCallback(() => {
