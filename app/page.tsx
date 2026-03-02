@@ -19,11 +19,20 @@ interface EmojiItem {
   createdAt: number // timestamp for fade effect
 }
 
-// Rain drop type for tears in rain effect
-interface RainDrop {
+// Rain particle types for tears in rain effect
+interface RainParticle {
   x: number
   y: number
-  speed: number
+  vx: number
+  vy: number
+  length: number
+  color: string
+}
+
+interface ThroughParticle {
+  x: number
+  y: number
+  vy: number
   length: number
   opacity: number
 }
@@ -49,31 +58,48 @@ export default function EmojiCanvas() {
   const spatialGridRef = useRef<Map<string, number[]>>(new Map())
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const rainCtxRef = useRef<CanvasRenderingContext2D | null>(null)
-  const rainDropsRef = useRef<RainDrop[]>([])
+  const rainParticlesRef = useRef<RainParticle[]>([])
+  const throughParticlesRef = useRef<ThroughParticle[]>([])
   const dprRef = useRef(1)
   const gridCellSize = 100
   const EMOJI_FADE_DURATION = 15000 // 15 seconds fade in dark mode
-  const RAIN_DROP_COUNT = 100
+  const RAIN_PARTICLE_COUNT = 80
+  const THROUGH_PARTICLE_COUNT = 30
 
   // Handle hydration
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  // Initialize rain drops
+  // Initialize rain particles — staggered across the canvas so rain doesn't all start at top
   const initRainDrops = useCallback((width: number, height: number) => {
-    const drops: RainDrop[] = []
-    for (let i = 0; i < RAIN_DROP_COUNT; i++) {
-      drops.push({
+    const particles: RainParticle[] = []
+    for (let i = 0; i < RAIN_PARTICLE_COUNT; i++) {
+      const length = Math.random() * 0.9 + 0.1
+      particles.push({
         x: Math.random() * width,
-        y: Math.random() * height,
-        speed: Math.random() * 2 + 1,
-        length: Math.random() * 15 + 10,
-        opacity: Math.random() * 0.03 + 0.01, // Very low opacity: 0.01-0.04
+        y: Math.random() * height, // stagger initial y so rain appears immediately
+        vx: (Math.random() - 0.5) * 0.6, // very slight horizontal drift
+        vy: Math.random() * 3 + 2,        // slow: 2–5 px/frame (lo-fi feel)
+        length,
+        color: `rgba(174, 194, 224, ${Math.random() * 0.3 + 0.2})`, // 0.2–0.5 opacity
       })
     }
-    rainDropsRef.current = drops
-  }, [])
+    rainParticlesRef.current = particles
+
+    const through: ThroughParticle[] = []
+    for (let i = 0; i < THROUGH_PARTICLE_COUNT; i++) {
+      const length = Math.random() * 400 + 60
+      through.push({
+        x: Math.random() * width,
+        y: Math.random() * height,         // stagger too
+        vy: Math.random() * 2 + 1,         // very slow: 1–3 px/frame
+        length,
+        opacity: Math.random() * 0.07 + 0.02, // subtle: 0.02–0.09
+      })
+    }
+    throughParticlesRef.current = through
+  }, [RAIN_PARTICLE_COUNT, THROUGH_PARTICLE_COUNT])
 
   // Initialize canvas
   useEffect(() => {
@@ -136,7 +162,7 @@ export default function EmojiCanvas() {
     }
   }, [initRainDrops])
 
-  // Render rain effect
+  // Render rain effect — two-layer system: fine streaks + gradient light shafts
   const renderRain = useCallback(() => {
     const ctx = rainCtxRef.current
     const canvas = rainCanvasRef.current
@@ -148,22 +174,44 @@ export default function EmojiCanvas() {
 
     ctx.clearRect(0, 0, width, height)
 
-    // Draw rain drops
-    for (const drop of rainDropsRef.current) {
+    // Layer 1: through-particles — tall gradient streaks (atmospheric light shafts)
+    for (const p of throughParticlesRef.current) {
+      ctx.save()
       ctx.beginPath()
-      ctx.moveTo(drop.x, drop.y)
-      ctx.lineTo(drop.x + 0.5, drop.y + drop.length)
-      ctx.strokeStyle = `rgba(150, 180, 255, ${drop.opacity})`
+      ctx.lineCap = "round"
+      const grd = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.length)
+      grd.addColorStop(0, "rgba(255,255,255,0)")
+      grd.addColorStop(1, `rgba(255,255,255,${p.opacity})`)
+      ctx.strokeStyle = grd
       ctx.lineWidth = 1
+      ctx.moveTo(p.x, p.y)
+      ctx.lineTo(p.x, p.y + p.length)
+      ctx.stroke()
+      ctx.closePath()
+      ctx.restore()
+
+      p.y += p.vy
+      if (p.y > height) {
+        p.y = -p.length
+        p.x = Math.random() * width
+      }
+    }
+
+    // Layer 2: fine rain streaks with slight angle
+    ctx.lineCap = "round"
+    for (const p of rainParticlesRef.current) {
+      ctx.beginPath()
+      ctx.strokeStyle = p.color
+      ctx.lineWidth = 0.8
+      ctx.moveTo(p.x, p.y)
+      ctx.lineTo(p.x + p.length * p.vx * 6, p.y + p.length * p.vy * 6)
       ctx.stroke()
 
-      // Move drop down
-      drop.y += drop.speed
-
-      // Reset drop when it goes off screen
-      if (drop.y > height) {
-        drop.y = -drop.length
-        drop.x = Math.random() * width
+      p.x += p.vx
+      p.y += p.vy
+      if (p.y > height) {
+        p.y = -p.length * 6
+        p.x = Math.random() * width
       }
     }
   }, [])
@@ -430,29 +478,44 @@ export default function EmojiCanvas() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gray-50 dark:bg-gray-900">
-      {/* Title */}
-      <h1
-        className={cn(
-          "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 font-damion text-7xl md:text-8xl select-none pointer-events-none transition-all duration-500",
-          theme === "dark" ? "text-gray-400/30" : "text-white"
-        )}
-        style={{
-          WebkitTextStroke: theme === "dark" ? "1px rgba(100,100,120,0.3)" : "2px black",
-          textShadow: theme === "dark" ? "none" : `
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
-    2px 2px 0 #000,
-    3px 3px 0 #000,
-    4px 4px 0 #000,
-    5px 5px 0 #000,
-    6px 6px 0 #000
-  `,
-        }}
-      >
-        {theme === "dark" ? "Tears in Rain" : "Emoji Canvas"}
-      </h1>
+      {/* Title — only visible in light mode */}
+      {theme !== "dark" && (
+        <svg
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 select-none pointer-events-none overflow-visible"
+          viewBox="0 0 600 120"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Depth shadow layers rendered first (back) */}
+          {[6,5,4,3,2].map(i => (
+            <text
+              key={i}
+              x={300 + i}
+              y={90 + i}
+              textAnchor="middle"
+              fontFamily="Damion, cursive"
+              fontSize="90"
+              fill="black"
+            >
+              Emoji Canvas
+            </text>
+          ))}
+          {/* Main text on top — paint-order ensures stroke renders behind fill so letters don't bleed */}
+          <text
+            x="300"
+            y="90"
+            textAnchor="middle"
+            fontFamily="Damion, cursive"
+            fontSize="90"
+            fill="white"
+            stroke="black"
+            strokeWidth="5"
+            strokeLinejoin="round"
+            style={{ paintOrder: "stroke fill" }}
+          >
+            Emoji Canvas
+          </text>
+        </svg>
+      )}
 
       {/* Custom cursor - only show on non-touch devices */}
       <style jsx global>{`
