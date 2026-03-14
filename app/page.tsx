@@ -53,6 +53,7 @@ export default function EmojiCanvas() {
   const [emojiCount, setEmojiCount] = useState(0)
   const { theme, setTheme, systemTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const [canvasReady, setCanvasReady] = useState(false)
   
   // Resolve the actual theme being used (handle undefined during SSR/initial render)
   const resolvedTheme = theme === 'system' ? systemTheme : theme
@@ -147,6 +148,7 @@ export default function EmojiCanvas() {
         initRainDrops(width, height)
         updateVisibleCells(width, height)
         needsRenderRef.current = true
+        setCanvasReady(true)
       }
     }
 
@@ -304,9 +306,19 @@ export default function EmojiCanvas() {
 
   // Rain loop - independent of emoji count so speed never degrades
   useEffect(() => {
-    // Don't start rain animation until component is mounted and theme is resolved
-    if (!mounted || !resolvedTheme || resolvedTheme !== "dark") {
-      if (rainRafRef.current) cancelAnimationFrame(rainRafRef.current)
+    // Cancel any existing rain animation first
+    if (rainRafRef.current) {
+      cancelAnimationFrame(rainRafRef.current)
+      rainRafRef.current = null
+    }
+
+    // Don't start rain animation until everything is ready
+    if (!mounted || !canvasReady || !resolvedTheme || resolvedTheme !== "dark") {
+      return
+    }
+
+    // Ensure rain canvas context and particles exist before starting animation
+    if (!rainCtxRef.current || rainParticlesRef.current.length === 0) {
       return
     }
 
@@ -316,8 +328,13 @@ export default function EmojiCanvas() {
     }
 
     rainRafRef.current = requestAnimationFrame(animateRain)
-    return () => { if (rainRafRef.current) cancelAnimationFrame(rainRafRef.current) }
-  }, [mounted, resolvedTheme, renderRain])
+    return () => { 
+      if (rainRafRef.current) {
+        cancelAnimationFrame(rainRafRef.current)
+        rainRafRef.current = null
+      }
+    }
+  }, [mounted, canvasReady, resolvedTheme, renderRain])
 
   // Prevent scrolling on mobile when interacting with canvas
   useEffect(() => {
