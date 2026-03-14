@@ -51,12 +51,11 @@ export default function EmojiCanvas() {
   const [selectedColor, setSelectedColor] = useState<string | null>(null)
   const [isDrawing, setIsDrawing] = useState<boolean>(false)
   const [emojiCount, setEmojiCount] = useState(0)
-  const { theme, setTheme, systemTheme } = useTheme()
+  const { setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  const [canvasReady, setCanvasReady] = useState(false)
   
-  // Resolve the actual theme being used (handle undefined during SSR/initial render)
-  const resolvedTheme = theme === 'system' ? systemTheme : theme
+  // Use resolvedTheme - it handles "system" and resolves to actual "dark" or "light"
+  const isDark = resolvedTheme === "dark"
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rainCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -148,7 +147,6 @@ export default function EmojiCanvas() {
         initRainDrops(width, height)
         updateVisibleCells(width, height)
         needsRenderRef.current = true
-        setCanvasReady(true)
       }
     }
 
@@ -306,19 +304,8 @@ export default function EmojiCanvas() {
 
   // Rain loop - independent of emoji count so speed never degrades
   useEffect(() => {
-    // Cancel any existing rain animation first
-    if (rainRafRef.current) {
-      cancelAnimationFrame(rainRafRef.current)
-      rainRafRef.current = null
-    }
-
-    // Don't start rain animation until everything is ready
-    if (!mounted || !canvasReady || !resolvedTheme || resolvedTheme !== "dark") {
-      return
-    }
-
-    // Ensure rain canvas context and particles exist before starting animation
-    if (!rainCtxRef.current || rainParticlesRef.current.length === 0) {
+    if (!isDark) {
+      if (rainRafRef.current) cancelAnimationFrame(rainRafRef.current)
       return
     }
 
@@ -328,13 +315,8 @@ export default function EmojiCanvas() {
     }
 
     rainRafRef.current = requestAnimationFrame(animateRain)
-    return () => { 
-      if (rainRafRef.current) {
-        cancelAnimationFrame(rainRafRef.current)
-        rainRafRef.current = null
-      }
-    }
-  }, [mounted, canvasReady, resolvedTheme, renderRain])
+    return () => { if (rainRafRef.current) cancelAnimationFrame(rainRafRef.current) }
+  }, [isDark, renderRain])
 
   // Prevent scrolling on mobile when interacting with canvas
   useEffect(() => {
@@ -448,54 +430,52 @@ export default function EmojiCanvas() {
   }
 
   const toggleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark")
+    setTheme(resolvedTheme === "dark" ? "light" : "dark")
   }
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Title */}
-      {mounted && resolvedTheme && (
-        <svg
-          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 select-none pointer-events-none overflow-visible transition-all duration-500"
-          style={{ width: "min(90vw, 640px)", height: "auto" }}
-          viewBox="0 0 600 120"
-          xmlns="http://www.w3.org/2000/svg"
+      <svg
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 select-none pointer-events-none overflow-visible transition-all duration-500"
+        style={{ width: "min(90vw, 640px)", height: "auto" }}
+        viewBox="0 0 600 120"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {!isDark && (
+          <>
+            {/* Depth shadow layers rendered first (back) */}
+            {[6,5,4,3,2].map(i => (
+              <text
+                key={i}
+                x={300 + i}
+                y={90 + i}
+                textAnchor="middle"
+                fontFamily="Damion, cursive"
+                fontSize="90"
+                fill="black"
+              >
+                Emoji Canvas
+              </text>
+            ))}
+          </>
+        )}
+        {/* Main text — in dark mode: ghost style; in light mode: white with black stroke */}
+        <text
+          x="300"
+          y="90"
+          textAnchor="middle"
+          fontFamily="Damion, cursive"
+          fontSize="90"
+          fill={isDark ? "rgba(100,100,120,0.15)" : "white"}
+          stroke={isDark ? "rgba(100,100,120,0.25)" : "black"}
+          strokeWidth={isDark ? "1" : "5"}
+          strokeLinejoin="round"
+          style={{ paintOrder: "stroke fill" }}
         >
-          {resolvedTheme !== "dark" && (
-            <>
-              {/* Depth shadow layers rendered first (back) */}
-              {[6,5,4,3,2].map(i => (
-                <text
-                  key={i}
-                  x={300 + i}
-                  y={90 + i}
-                  textAnchor="middle"
-                  fontFamily="Damion, cursive"
-                  fontSize="90"
-                  fill="black"
-                >
-                  Emoji Canvas
-                </text>
-              ))}
-            </>
-          )}
-          {/* Main text — in dark mode: ghost style; in light mode: white with black stroke */}
-          <text
-            x="300"
-            y="90"
-            textAnchor="middle"
-            fontFamily="Damion, cursive"
-            fontSize="90"
-            fill={resolvedTheme === "dark" ? "rgba(100,100,120,0.15)" : "white"}
-            stroke={resolvedTheme === "dark" ? "rgba(100,100,120,0.25)" : "black"}
-            strokeWidth={resolvedTheme === "dark" ? "1" : "5"}
-            strokeLinejoin="round"
-            style={{ paintOrder: "stroke fill" }}
-          >
-            Emoji Canvas
-          </text>
-        </svg>
-      )}
+          Emoji Canvas
+        </text>
+      </svg>
 
       {/* Custom cursor - only show on non-touch devices */}
       <style jsx global>{`
@@ -549,7 +529,7 @@ export default function EmojiCanvas() {
           ref={rainCanvasRef}
           className={cn(
             "absolute top-0 left-0 w-full h-full pointer-events-none transition-opacity duration-500",
-            resolvedTheme === "dark" ? "opacity-100" : "opacity-0"
+            isDark ? "opacity-100" : "opacity-0"
           )}
         />
       </div>
@@ -606,9 +586,9 @@ export default function EmojiCanvas() {
           size="icon"
           className="fixed top-4 right-4 z-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:scale-110 hover:shadow-xl dark:hover:shadow-[0_0_20px_rgba(250,204,21,0.4)] hover:shadow-gray-400/50"
           onClick={toggleTheme}
-          aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
         >
-          {resolvedTheme === "dark" ? (
+          {isDark ? (
             <Sun className="h-5 w-5 text-yellow-500" />
           ) : (
             <Moon className="h-5 w-5 text-gray-700" />
@@ -619,7 +599,7 @@ export default function EmojiCanvas() {
       {/* Emoji count display */}
       {emojiCount > 0 && (
         <div className="fixed top-4 left-4 z-10 bg-white dark:bg-gray-800 rounded-full shadow-lg px-3 py-1 text-sm font-medium text-gray-600 dark:text-gray-300">
-          {emojiCount.toLocaleString()} {resolvedTheme === "dark" ? "tears in rain" : "emojis"}
+          {emojiCount.toLocaleString()} {isDark ? "tears in rain" : "emojis"}
         </div>
       )}
     </div>
