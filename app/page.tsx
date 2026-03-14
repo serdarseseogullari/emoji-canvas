@@ -301,7 +301,8 @@ export default function EmojiCanvas() {
 
   // Rain loop - independent of emoji count so speed never degrades
   useEffect(() => {
-    if (theme !== "dark") {
+    // Don't start rain animation until component is mounted and theme is resolved
+    if (!mounted || theme !== "dark") {
       if (rainRafRef.current) cancelAnimationFrame(rainRafRef.current)
       return
     }
@@ -313,7 +314,7 @@ export default function EmojiCanvas() {
 
     rainRafRef.current = requestAnimationFrame(animateRain)
     return () => { if (rainRafRef.current) cancelAnimationFrame(rainRafRef.current) }
-  }, [theme, renderRain])
+  }, [mounted, theme, renderRain])
 
   // Prevent scrolling on mobile when interacting with canvas
   useEffect(() => {
@@ -433,46 +434,48 @@ export default function EmojiCanvas() {
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Title */}
-      <svg
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 select-none pointer-events-none overflow-visible transition-all duration-500"
-        style={{ width: "min(90vw, 640px)", height: "auto" }}
-        viewBox="0 0 600 120"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        {theme !== "dark" && (
-          <>
-            {/* Depth shadow layers rendered first (back) */}
-            {[6,5,4,3,2].map(i => (
-              <text
-                key={i}
-                x={300 + i}
-                y={90 + i}
-                textAnchor="middle"
-                fontFamily="Damion, cursive"
-                fontSize="90"
-                fill="black"
-              >
-                Emoji Canvas
-              </text>
-            ))}
-          </>
-        )}
-        {/* Main text — in dark mode: ghost style; in light mode: white with black stroke */}
-        <text
-          x="300"
-          y="90"
-          textAnchor="middle"
-          fontFamily="Damion, cursive"
-          fontSize="90"
-          fill={theme === "dark" ? "rgba(100,100,120,0.15)" : "white"}
-          stroke={theme === "dark" ? "rgba(100,100,120,0.25)" : "black"}
-          strokeWidth={theme === "dark" ? "1" : "5"}
-          strokeLinejoin="round"
-          style={{ paintOrder: "stroke fill" }}
+      {mounted && (
+        <svg
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-8deg] z-0 select-none pointer-events-none overflow-visible transition-all duration-500"
+          style={{ width: "min(90vw, 640px)", height: "auto" }}
+          viewBox="0 0 600 120"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          Emoji Canvas
-        </text>
-      </svg>
+          {theme !== "dark" && (
+            <>
+              {/* Depth shadow layers rendered first (back) */}
+              {[6,5,4,3,2].map(i => (
+                <text
+                  key={i}
+                  x={300 + i}
+                  y={90 + i}
+                  textAnchor="middle"
+                  fontFamily="Damion, cursive"
+                  fontSize="90"
+                  fill="black"
+                >
+                  Emoji Canvas
+                </text>
+              ))}
+            </>
+          )}
+          {/* Main text — in dark mode: ghost style; in light mode: white with black stroke */}
+          <text
+            x="300"
+            y="90"
+            textAnchor="middle"
+            fontFamily="Damion, cursive"
+            fontSize="90"
+            fill={theme === "dark" ? "rgba(100,100,120,0.15)" : "white"}
+            stroke={theme === "dark" ? "rgba(100,100,120,0.25)" : "black"}
+            strokeWidth={theme === "dark" ? "1" : "5"}
+            strokeLinejoin="round"
+            style={{ paintOrder: "stroke fill" }}
+          >
+            Emoji Canvas
+          </text>
+        </svg>
+      )}
 
       {/* Custom cursor - only show on non-touch devices */}
       <style jsx global>{`
