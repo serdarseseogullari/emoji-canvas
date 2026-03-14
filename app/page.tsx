@@ -78,7 +78,7 @@ export default function EmojiCanvas() {
   const gridCellSize = 100
   const RAIN_PARTICLE_COUNT = 80
 
-  // Handle hydration
+  // Prevent hydration mismatch for theme toggle button
   useEffect(() => {
     setMounted(true)
   }, [])
